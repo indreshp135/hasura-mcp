@@ -1,14 +1,6 @@
 # Hasura MCP Server
 
-A Model Context Protocol (MCP) server that provides tools for managing users, entitlements, and grants through a Hasura GraphQL API.
-
-## Database Schema
-
-The system includes three main tables:
-
-1. **users** - Stores user information
-2. **entitlements** - Stores permission definitions
-3. **grants** - Many-to-many relationship between users and entitlements
+A Model Context Protocol (MCP) server that provides tools for querying and managing data through a Hasura GraphQL API.
 
 ## Setup Instructions
 
@@ -27,103 +19,105 @@ docker compose logs -f
 Connect to PostgreSQL and run the initialization script:
 
 ```bash
-# Copy the SQL file to the postgres container
+# Run the initialization script
 docker compose exec postgres psql -U postgres -d hasura -f /docker-entrypoint-initdb.d/init.sql
-
-# Or run it directly
-docker compose exec postgres psql -U postgres -d hasura -c "$(cat init.sql)"
 ```
 
 ### 3. Configure Hasura
 
 1. Open Hasura Console: http://localhost:8080
 2. Use admin secret: `myadminsecretkey`
-3. Go to Data tab and click "Track All" to track all tables
-4. Go to Relationships tab and configure relationships if needed
+3. Go to Data tab and click "Track All" to track all tables and relationships
 
 ### 4. Install MCP Server Dependencies
 
 ```bash
-npm install
+uv sync
 ```
 
 ### 5. Start the MCP Server
 
 ```bash
-npm start
+python server.py
 ```
 
 ## Available Tools
 
 The MCP server provides the following tools:
 
-- `get_users` - Get all users
-- `get_user_entitlements` - Get entitlements for a specific user
-- `get_entitlements` - Get all available entitlements
-- `get_grants` - Get all grants (user-entitlement relationships)
-- `create_user` - Create a new user
-- `create_entitlement` - Create a new entitlement
-- `grant_entitlement` - Grant an entitlement to a user
-- `revoke_entitlement` - Revoke an entitlement from a user
-
-## Sample Data
-
-The system comes with sample data:
-
-### Users
-- Alice Johnson (alice@example.com)
-- Bob Smith (bob@example.com)
-- Charlie Brown (charlie@example.com)
-- Diana Prince (diana@example.com)
-
-### Entitlements
-- Read Documents
-- Write Documents
-- Delete Documents
-- Admin Access
-- User Management
-- Report Generation
-
-### Grants
-- Alice: Read and Write Documents
-- Bob: Admin Access and User Management
-- Charlie: Read Documents only
-- Diana: Report Generation and Read Documents
+- `query_graphql` - Execute any GraphQL query with optional variables
+- `list_tables` - List all available tables in your Hasura schema
+- `describe_table` - Get the schema/structure of a specific table
+- `insert_data` - Insert data into a table using GraphQL mutation
+- `update_data` - Update data in a table using GraphQL mutation  
+- `delete_data` - Delete data from a table using GraphQL mutation
 
 ## Usage with Claude
 
 Once the MCP server is running, you can use it with Claude to:
 
-1. Query user information and their entitlements
-2. Create new users and entitlements
-3. Grant or revoke permissions
-4. Analyze access patterns and relationships
+1. Query data from your Hasura database
+2. Insert, update, and delete records
+3. Explore table schemas and relationships
+4. Execute complex GraphQL queries
 
 Example queries:
-- "Show me all users and their entitlements"
-- "Create a new user with email john@example.com"
-- "Grant read access to user Charlie"
-- "Who has admin access in the system?"
+- "Show me all the tables in the database"
+- "What's the structure of the users table?"
+- "Insert a new user with name 'John Doe' and email 'john@example.com'"
+- "Query all users and their related data"
 
 ## Configuration
 
-### Hasura Configuration
-- Endpoint: `http://localhost:8080/v1/graphql`
-- Admin Secret: `myadminsecretkey`
+The MCP server connects to your Hasura GraphQL endpoint. Default configuration:
 
-### Database Configuration
-- Host: localhost
-- Port: 5432
-- Database: hasura
-- Username: postgres
-- Password: postgrespassword
+- **Hasura Endpoint**: `http://localhost:8080/v1/graphql`
+- **Admin Secret**: `myadminsecretkey`
+
+### Database Configuration (via Docker Compose)
+- **Host**: localhost
+- **Port**: 5432
+- **Database**: hasura
+- **Username**: postgres
+- **Password**: postgrespassword
+
+## Environment Variables
+
+Set these environment variables before running the server:
+
+```bash
+export HASURA_ENDPOINT="http://localhost:8080/v1/graphql"
+export HASURA_ADMIN_SECRET="myadminsecretkey"
+```
+
+Or create a `.env` file in the project root with:
+
+```
+HASURA_ENDPOINT=http://localhost:8080/v1/graphql
+HASURA_ADMIN_SECRET=myadminsecretkey
+```
 
 ## Development
 
-For development, you can use:
+To modify the server, edit `server.py` and restart:
 
 ```bash
-npm run dev
+python server.py
 ```
 
-This will start the server with auto-reload on file changes.
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection refused**: Make sure Hasura is running on the correct port
+2. **Authentication error**: Check your admin secret
+3. **GraphQL errors**: Verify your table names and schema in Hasura Console
+
+### Logs
+
+Check Docker logs for database and Hasura issues:
+
+```bash
+docker compose logs hasura
+docker compose logs postgres
+```
