@@ -35,10 +35,10 @@ docker compose exec postgres psql -U postgres -d hasura -f /docker-entrypoint-in
 uv sync
 ```
 
-### 5. Start the MCP Server
+### 5. Install MCP server in Claude Desktop
 
 ```bash
-python server.py
+uv run mcp install server.py
 ```
 
 ## Available Tools
@@ -99,10 +99,10 @@ HASURA_ADMIN_SECRET=myadminsecretkey
 
 ## Development
 
-To modify the server, edit `server.py` and restart:
+To modify the server, edit `server.py`:
 
 ```bash
-python server.py
+uv run mcp dev server.py --with-editable .
 ```
 
 ## Troubleshooting

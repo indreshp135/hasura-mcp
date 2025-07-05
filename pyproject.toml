@@ -1,7 +1,7 @@
 [project]
 name = "hasura-learning"
 version = "0.1.0"
-description = "Add your description here"
+description = "A FastMCP server for interacting with a Hasura GraphQL endpoint"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,3 +9,32 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "line-too-long",  # Black handles this
+    "invalid-name",
+    "fixme",
+    "broad-exception-caught",  # We've already fixed specific exceptions
+]
+
+[tool.pylint.format]
+max-line-length = 88  # Match Black's line length
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "db", "mcp"]
+
+[tool.pylint.design]
+max-args = 8
+max-locals = 20
+max-returns = 8
+max-branches = 15
+max-statements = 60

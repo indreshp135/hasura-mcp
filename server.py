@@ -3,29 +3,57 @@ import os
 from typing import Any, Dict, Optional
 import httpx
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-mcp = FastMCP("Hasura GraphQL MCP Server")
+mcp = FastMCP(
+    "Grants Database MCP Server",
+    instructions="""
+This server interfaces with a Hasura GraphQL backend containing large data.
+To ensure optimal performance and prevent issues with LLM context limits:
+-> Avoid running broad queries that fetch all data or unnecessary fields.
+-> Request only the specific fields and records you need.
 
-HASURA_ENDPOINT = os.getenv(
-    "HASURA_ENDPOINT", "http://localhost:8080/v1/graphql")
+When adding or updating data:
+-> Provide all required fields explicitly—do not rely on assumed defaults
+    or placeholders.
+-> Follow the defined table schema carefully.
+-> If you're unsure about the structure or requirements, ask for help
+    and confirm before proceeding.
+""",
+)
+
+HASURA_ENDPOINT = os.getenv("HASURA_ENDPOINT",
+                            "http://localhost:8080/v1/graphql")
 HASURA_ADMIN_SECRET = os.getenv("HASURA_ADMIN_SECRET", "myadminsecretkey")
 
 
 class GraphQLQuery(BaseModel):
-    """_summary_
+    """GraphQLQuery model for defining a GraphQL query.
 
     Args:
-        BaseModel (_type_): _description_
+        BaseModel (_type_): Base model for Pydantic validation.
     """
 
-    query: str
+    query: str = Field(
+        description="GraphQL query string \
+        (query, mutation, or subscription)"
+    )
     variables: Optional[Dict[str, Any]] = None
 
 
 async def execute_graphql_query(
     query: str, variables: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
+    """Execute a GraphQL query against the Hasura endpoint.
+
+    Args:
+        query (str): GraphQL query string (query, mutation, or subscription)
+        variables (Optional[Dict[str, Any]], optional):
+            Optional dictionary of variables. Defaults to None.
+
+    Returns:
+        Dict[str, Any]: JSON response from the GraphQL endpoint.
+    """
     headers = {"Content-Type": "application/json"}
     if HASURA_ADMIN_SECRET:
         headers["X-Hasura-Admin-Secret"] = HASURA_ADMIN_SECRET
@@ -43,14 +71,18 @@ async def execute_graphql_query(
 
 @mcp.tool()
 async def query_graphql(query: str, variables: Optional[str] = None) -> str:
-    """Execute a GraphQL query against the Hasura endpoint.
+    """Execute any GraphQL query or mutation against Hasura.
 
     Args:
-        query: The GraphQL query string
-        variables: Optional JSON string of variables for the query
+        query: GraphQL query string (query, mutation, or subscription)
+        variables: Optional JSON string of variables (e.g., '{"id": 1}')
 
     Returns:
-        JSON response from the GraphQL endpoint
+        JSON response from GraphQL endpoint
+
+    Example:
+        query = 'query { users { id name email } }'
+        variables = '{"id": 1}'
     """
     try:
         parsed_variables = None
@@ -59,13 +91,27 @@ async def query_graphql(query: str, variables: Optional[str] = None) -> str:
         print(f"Executing query: {query} with variables: {parsed_variables}")
         result = await execute_graphql_query(query, parsed_variables)
         return json.dumps(result, indent=2)
+    except json.JSONDecodeError as e:
+        return f"Error parsing variables JSON: {str(e)}"
+    except httpx.RequestError as e:
+        return f"Error connecting to Hasura: {str(e)}"
+    except httpx.HTTPStatusError as e:
+        return f"HTTP error from Hasura:\
+            {e.response.status_code} - {e.response.text}"
     except Exception as e:
-        return f"Error executing GraphQL query: {str(e)}"
+        return f"Unexpected error executing GraphQL query: {str(e)}"
 
 
 @mcp.tool()
 async def list_tables() -> str:
-    """List all tables available in the Hasura schema."""
+    """List all tables available in the Hasura schema.
+
+    Uses GraphQL introspection to discover queryable tables. Use this first
+    to explore your database structure.
+
+    Returns:
+        JSON response with table names and types
+    """
     query = """
     query {
         __schema {
@@ -84,19 +130,27 @@ async def list_tables() -> str:
     try:
         result = await execute_graphql_query(query)
         return json.dumps(result, indent=2)
+    except httpx.RequestError as e:
+        return f"Error connecting to Hasura: {str(e)}"
+    except httpx.HTTPStatusError as e:
+        return f"HTTP error from Hasura:\
+            {e.response.status_code} - {e.response.text}"
     except Exception as e:
-        return f"Error listing tables: {str(e)}"
+        return f"Unexpected error listing tables: {str(e)}"
 
 
 @mcp.tool()
 async def describe_table(table_name: str) -> str:
     """Get the schema/structure of a specific table.
 
+    Uses GraphQL introspection to get field names, types, and relationships.
+    Use this before performing queries or mutations on a table.
+
     Args:
-        table_name: Name of the table to describe
+        table_name: Name of the table to describe (e.g., "users", "posts")
 
     Returns:
-        Table schema information
+        JSON response with table schema information
     """
     query = f"""
     query {{
@@ -119,105 +173,13 @@ async def describe_table(table_name: str) -> str:
     try:
         result = await execute_graphql_query(query)
         return json.dumps(result, indent=2)
+    except httpx.RequestError as e:
+        return f"Error connecting to Hasura: {str(e)}"
+    except httpx.HTTPStatusError as e:
+        return f"HTTP error from Hasura:\
+            {e.response.status_code} - {e.response.text}"
     except Exception as e:
-        return f"Error describing table {table_name}: {str(e)}"
-
-
-@mcp.tool()
-async def insert_data(table_name: str, data: str) -> str:
-    """Insert data into a table using GraphQL mutation.
-
-    Args:
-        table_name: Name of the table to insert into
-        data: JSON string containing the data to insert
-
-    Returns:
-        Result of the insertion operation
-    """
-    try:
-        parsed_data = json.loads(data)
-
-        mutation = f"""
-        mutation {{
-            insert_{table_name}(objects: [{json.dumps(parsed_data)}]) {{
-                affected_rows
-                returning {{
-                    id
-                }}
-            }}
-        }}
-        """
-
-        result = await execute_graphql_query(mutation)
-        return json.dumps(result, indent=2)
-    except Exception as e:
-        return f"Error inserting data into {table_name}: {str(e)}"
-
-
-@mcp.tool()
-async def update_data(table_name: str,
-                      where_clause: str, set_data: str) -> str:
-    """Update data in a table using GraphQL mutation.
-
-    Args:
-        table_name: Name of the table to update
-        where_clause: JSON string for the where condition
-        set_data: JSON string containing the data to update
-
-    Returns:
-        Result of the update operation
-    """
-    try:
-        parsed_where = json.loads(where_clause)
-        parsed_set = json.loads(set_data)
-
-        mutation = f"""
-        mutation {{
-            update_{table_name}(
-                where: {json.dumps(parsed_where)},
-                _set: {json.dumps(parsed_set)}
-            ) {{
-                affected_rows
-                returning {{
-                    id
-                }}
-            }}
-        }}
-        """
-
-        result = await execute_graphql_query(mutation)
-        return json.dumps(result, indent=2)
-    except Exception as e:
-        return f"Error updating data in {table_name}: {str(e)}"
-
-
-@mcp.tool()
-async def delete_data(table_name: str, where_clause: str) -> str:
-    """Delete data from a table using GraphQL mutation.
-
-    Args:
-        table_name: Name of the table to delete from
-        where_clause: JSON string for the where condition
-
-    Returns:
-        Result of the deletion operation
-    """
-    try:
-        parsed_where = json.loads(where_clause)
-
-        mutation = f"""
-        mutation {{
-            delete_{table_name}(where: {json.dumps(parsed_where)}) {{
-                affected_rowsƒ
-            }}
-        }}
-        """
-
-        result = await execute_graphql_query(mutation)
-        return json.dumps(result, indent=2)
-    except Exception as e:
-        return f"Error deleting data from {table_name}: {str(e)}"
-
+        return f"Unexpected error describing table {table_name}: {str(e)}"
 
 if __name__ == "__main__":
     mcp.run()
